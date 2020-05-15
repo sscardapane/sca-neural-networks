@@ -1,0 +1,8 @@
+
+__pycache__/
+
+mnist/MNIST/processed/
+
+mnist/MNIST/raw/
+
+temporary.pt
