@@ -46,3 +46,11 @@ def standard_train_step(net, loss_fn, opt, xb, yb, C=0):
     opt.step()
     opt.zero_grad()
     return loss_epoch.item()
+
+def evaluate_net(net, test_loader, test_metric, device):
+    with torch.no_grad():
+        test_i = 0.0
+        for xb, yb in test_loader:
+            xb, yb = xb.to(device), yb.to(device)
+            test_i += test_metric(yb, net(xb))
+    return test_i / len(test_loader.dataset)
