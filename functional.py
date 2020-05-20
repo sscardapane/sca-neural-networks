@@ -1,21 +1,24 @@
 import torch
-from torch.autograd.functional import _as_tuple, _grad_preprocess, _check_requires_grad, _validate_v, _autograd_grad, _fill_in_zeros, _grad_postprocess, _tuple_postprocess
 
+# Code here is mostly taken from this discussion:
+# https://discuss.pytorch.org/t/combining-functional-jvp-with-a-nn-module/81215/7
 
 def del_attr(obj, names):
+    # Recursively deletes all attributes in names from obj
     if len(names) == 1:
         delattr(obj, names[0])
     else:
         del_attr(getattr(obj, names[0]), names[1:])
         
 def set_attr(obj, names, val):
+    # Recursively set all attributes (names, val) in obj
     if len(names) == 1:
         setattr(obj, names[0], val)
     else:
         set_attr(getattr(obj, names[0]), names[1:], val)
         
 def make_functional(mod):
-    orig_params = tuple(mod.parameters())
+    orig_params = list(mod.parameters())
     # Remove all the parameters in the model
     names = []
     for name, p in list(mod.named_parameters()):
@@ -28,38 +31,25 @@ def functional_mod_fw(xb, mod, names, *params):
         set_attr(mod, name.split("."), p)
     return mod(xb)
 
-def fw_linearize(func, inputs, create_graph=False, strict=False):
-    is_inputs_tuple, inputs = _as_tuple(inputs, "inputs", "jvp")
-    inputs = _grad_preprocess(inputs, create_graph=create_graph, need_graph=True)
+#def _grad_preprocess(inputs):
+#    res = tuple([inp.view_as(inp) for inp in inputs])
+#    return res
 
+def fw_linearize(func, inputs):
+    #inputs = _grad_preprocess(inputs)
     outputs = func(*inputs)
-    is_outputs_tuple, outputs = _as_tuple(outputs, "outputs of the user-provided function", "jvp")
-    _check_requires_grad(outputs, "outputs", strict=strict)
+
     # The backward is linear so the value of grad_outputs is not important as
     # it won't appear in the double backward graph. We only need to ensure that
     # it does not contain inf or nan.
-    grad_outputs = tuple(torch.zeros_like(out, requires_grad=True) for out in outputs)
+    grad_outputs = torch.zeros_like(outputs, requires_grad=True)
 
-    grad_inputs = _autograd_grad(outputs, inputs, grad_outputs, create_graph=True)
-    _check_requires_grad(grad_inputs, "grad_inputs", strict=strict)
+    grad_inputs = torch.autograd.grad(outputs, inputs, grad_outputs, allow_unused=True,
+                                   create_graph=True, retain_graph=None)
 
     def lin_fn(v, retain_graph=True):
-        if v is not None:
-            _, v = _as_tuple(v, "v", "jvp")
-            v = _grad_preprocess(v, create_graph=create_graph, need_graph=False)
-            _validate_v(v, inputs, is_inputs_tuple)
-        else:
-            if len(inputs) != 1 or inputs[0].nelement() != 1:
-                raise RuntimeError("The vector v can only be None if the input to "
-                                   "the user-provided function is a single Tensor "
-                                   "with a single element.")
-
-        grad_res = _autograd_grad(grad_inputs, grad_outputs, v, create_graph=create_graph, retain_graph=retain_graph)
-
-        jvp = _fill_in_zeros(grad_res, outputs, strict, create_graph, "back_trick")
-
-        # Cleanup objects and return them to the user
-        jvp = _grad_postprocess(jvp, create_graph)
-
-        return _tuple_postprocess(jvp, is_outputs_tuple)
+        #v = _grad_preprocess(v)
+        jvp = torch.autograd.grad(grad_inputs, grad_outputs, v, allow_unused=True,
+                                   create_graph=True, retain_graph=True)
+        return jvp
     return lin_fn, outputs

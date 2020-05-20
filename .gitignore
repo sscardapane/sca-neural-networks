@@ -6,3 +6,5 @@ mnist/MNIST/processed/
 mnist/MNIST/raw/
 
 temporary.pt
+
+.ipynb_checkpoints/

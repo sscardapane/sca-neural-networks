@@ -17,7 +17,6 @@ class Flatten(torch.nn.Module):
     def forward(self, input):
         return input.view(input.size(0), -1)
 
-
 def smooth_plot(x, y=None, label='', halflife=10):
   if y is None:
     y_int = x
